@@ -1,0 +1,76 @@
+name: Build Laravel for Hosting
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, intl, bcmath, pdo_mysql
+          tools: composer, npm
+
+      - name: Install PHP dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Build assets
+        run: |
+          if [ -f "vite.config.js" ]; then
+            npm run build
+          elif [ -f "webpack.mix.js" ]; then
+            npm run prod || npm run production
+          fi
+
+      - name: Generate Laravel key
+        run: php artisan key:generate
+
+      - name: Clear & optimize Laravel cache
+        run: |
+          php artisan config:clear
+          php artisan cache:clear
+          php artisan route:clear
+          php artisan view:clear
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+
+      - name: Prepare public_html folder
+        run: |
+          mkdir -p build/public_html
+          rsync -av --exclude=.git --exclude=node_modules --exclude=tests \
+                 --exclude=.github --exclude=storage/logs --exclude=storage/framework/sessions \
+                 ./ build/public_html/
+
+          # copy hidden files like .htaccess if any
+          if [ -f "public/.htaccess" ]; then
+            cp public/.htaccess build/public_html/public/.htaccess
+          fi
+
+      - name: Copy env example for reference
+        run: cp .env.example build/public_html/.env
+
+      - name: Create zip artifact
+        run: |
+          cd build
+          zip -r laravel_build.zip public_html
+        shell: bash
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: laravel_build
+          path: build/laravel_build.zip
