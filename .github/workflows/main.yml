@@ -1,4 +1,4 @@
-name: Build Laravel for Hosting
+name: Build Laravel (Legacy PHP 7.3 + Gulp)
 
 on:
   push:
@@ -14,31 +14,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up PHP
+      # Setup PHP versi lama
+      - name: Set up PHP 7.3
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: '7.3'
           extensions: mbstring, intl, bcmath, pdo_mysql
-          tools: composer, npm
+          tools: composer
 
-      - name: Install PHP dependencies
+      # Setup Node.js agar bisa pakai Gulp
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '14'
+
+      # Install PHP dependencies (tanpa dev)
+      - name: Install composer dependencies
         run: composer install --no-dev --optimize-autoloader
 
-      - name: Install Node dependencies
-        run: npm install
-
-      - name: Build assets
+      # Install Node modules dan Gulp global
+      - name: Install Node dependencies & build assets
         run: |
-          if [ -f "vite.config.js" ]; then
-            npm run build
-          elif [ -f "webpack.mix.js" ]; then
-            npm run prod || npm run production
-          fi
+          npm install -g gulp
+          npm install
+          gulp
 
+      # Generate Laravel app key
       - name: Generate Laravel key
         run: php artisan key:generate
 
-      - name: Clear & optimize Laravel cache
+      # Cache dan optimasi config
+      - name: Optimize Laravel
         run: |
           php artisan config:clear
           php artisan cache:clear
@@ -48,27 +54,22 @@ jobs:
           php artisan route:cache
           php artisan view:cache
 
-      - name: Prepare public_html folder
+      # Siapkan folder hasil build
+      - name: Prepare build folder for public_html
         run: |
           mkdir -p build/public_html
           rsync -av --exclude=.git --exclude=node_modules --exclude=tests \
-                 --exclude=.github --exclude=storage/logs --exclude=storage/framework/sessions \
+                 --exclude=.github --exclude=storage/framework/sessions \
                  ./ build/public_html/
+          cp .env.example build/public_html/.env || true
 
-          # copy hidden files like .htaccess if any
-          if [ -f "public/.htaccess" ]; then
-            cp public/.htaccess build/public_html/public/.htaccess
-          fi
-
-      - name: Copy env example for reference
-        run: cp .env.example build/public_html/.env
-
-      - name: Create zip artifact
+      # Buat ZIP siap upload
+      - name: Create ZIP artifact
         run: |
           cd build
           zip -r laravel_build.zip public_html
-        shell: bash
 
+      # Upload hasil build
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
