@@ -3,7 +3,7 @@ name: Build Laravel (Legacy Vuedo)
 on:
   push:
     branches:
-      - main
+      - masater
   workflow_dispatch:
 
 jobs:
