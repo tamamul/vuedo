@@ -1,9 +1,9 @@
-name: Build Laravel (Legacy PHP 7.3 + Gulp)
+name: Build Laravel (Legacy Vuedo)
 
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
 jobs:
@@ -11,39 +11,50 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout kode
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Setup PHP versi lama
-      - name: Set up PHP 7.3
+      # Setup PHP 7.3 (biar cocok dengan dependency composer lama)
+      - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '7.3'
           extensions: mbstring, intl, bcmath, pdo_mysql
           tools: composer
 
-      # Setup Node.js agar bisa pakai Gulp
+      # Setup Node.js lawas (v10.x cocok dengan Gulp 3 dan Elixir 5)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '14'
+          node-version: '10'
 
-      # Install PHP dependencies (tanpa dev)
+      # Tambahkan Python 2 agar node-gyp nggak error
+      - name: Install python2 + build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python-is-python2 build-essential
+          python --version
+
+      # Install dependensi PHP (tanpa dev)
       - name: Install composer dependencies
         run: composer install --no-dev --optimize-autoloader
 
-      # Install Node modules dan Gulp global
-      - name: Install Node dependencies & build assets
+      # Install dependensi Node dan build asset dengan Gulp
+      - name: Install Node dependencies & run Gulp
+        env:
+          PYTHON: /usr/bin/python2
+          npm_config_python: /usr/bin/python2
         run: |
           npm install -g gulp
           npm install
-          gulp
+          gulp --production
 
       # Generate Laravel app key
-      - name: Generate Laravel key
+      - name: Generate app key
         run: php artisan key:generate
 
-      # Cache dan optimasi config
+      # Bersihin cache dan optimasi
       - name: Optimize Laravel
         run: |
           php artisan config:clear
@@ -54,8 +65,8 @@ jobs:
           php artisan route:cache
           php artisan view:cache
 
-      # Siapkan folder hasil build
-      - name: Prepare build folder for public_html
+      # Siapkan hasil build ke folder public_html
+      - name: Prepare public_html build
         run: |
           mkdir -p build/public_html
           rsync -av --exclude=.git --exclude=node_modules --exclude=tests \
@@ -63,13 +74,13 @@ jobs:
                  ./ build/public_html/
           cp .env.example build/public_html/.env || true
 
-      # Buat ZIP siap upload
+      # Buat ZIP hasil build
       - name: Create ZIP artifact
         run: |
           cd build
           zip -r laravel_build.zip public_html
 
-      # Upload hasil build
+      # Upload artifact siap download
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
